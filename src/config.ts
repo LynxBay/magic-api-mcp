@@ -6,6 +6,10 @@ export interface Config {
   password?: string;
   readonly: boolean;
   prefix: string;
+  transport: "stdio" | "http";
+  httpPort: number;
+  httpHost: string;
+  accessToken?: string;
 }
 
 function env(key: string): string | undefined {
@@ -29,5 +33,9 @@ export function loadConfig(): Config {
     password: env("MAGIC_API_PASSWORD"),
     readonly: parseBool(env("MAGIC_API_READONLY")),
     prefix: (env("MAGIC_API_PREFIX") ?? "").replace(/^\/+|\/+$/g, ""),
+    transport: env("MAGIC_API_TRANSPORT") === "http" ? "http" : "stdio",
+    httpPort: Number(env("MAGIC_API_HTTP_PORT") ?? 3111),
+    httpHost: env("MAGIC_API_HTTP_HOST") ?? "0.0.0.0",
+    accessToken: env("MAGIC_API_ACCESS_TOKEN"),
   };
 }

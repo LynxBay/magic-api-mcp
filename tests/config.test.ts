@@ -9,6 +9,10 @@ afterEach(() => {
   delete process.env.MAGIC_API_PASSWORD;
   delete process.env.MAGIC_API_READONLY;
   delete process.env.MAGIC_API_PREFIX;
+  delete process.env.MAGIC_API_TRANSPORT;
+  delete process.env.MAGIC_API_HTTP_PORT;
+  delete process.env.MAGIC_API_HTTP_HOST;
+  delete process.env.MAGIC_API_ACCESS_TOKEN;
 });
 
 describe("loadConfig", () => {
@@ -40,5 +44,28 @@ describe("loadConfig", () => {
     process.env.MAGIC_API_BASE = "http://x:9999/";
     const c = loadConfig();
     expect(c.baseUrl).toBe("http://x:9999");
+  });
+});
+
+describe("loadConfig transport & http", () => {
+  it("defaults to stdio transport", () => {
+    process.env.MAGIC_API_BASE = "http://x";
+    const c = loadConfig();
+    expect(c.transport).toBe("stdio");
+    expect(c.httpPort).toBe(3111);
+    expect(c.httpHost).toBe("0.0.0.0");
+    expect(c.accessToken).toBeUndefined();
+  });
+  it("enables http transport and reads port/host/token", () => {
+    process.env.MAGIC_API_BASE = "http://x";
+    process.env.MAGIC_API_TRANSPORT = "http";
+    process.env.MAGIC_API_HTTP_PORT = "8080";
+    process.env.MAGIC_API_HTTP_HOST = "127.0.0.1";
+    process.env.MAGIC_API_ACCESS_TOKEN = "secret";
+    const c = loadConfig();
+    expect(c.transport).toBe("http");
+    expect(c.httpPort).toBe(8080);
+    expect(c.httpHost).toBe("127.0.0.1");
+    expect(c.accessToken).toBe("secret");
   });
 });
