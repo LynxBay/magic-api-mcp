@@ -171,3 +171,40 @@ export const updateTaskTool: ToolDef<UpdateTaskArgs, { id: string }> = {
     return { id };
   },
 };
+
+/** ref → 改 enabled → 保存，返回 id（enable/disable 共用） */
+async function setTaskEnabled(client: MagicClient, ref: string, enabled: boolean): Promise<string> {
+  const id = await resolveTaskRef(client, ref);
+  await applyPatch(client, id, { enabled });
+  return id;
+}
+
+export const enableTaskTool: ToolDef<{ ref: string }, { id: string; enabled: boolean }> = {
+  name: "enable_task",
+  description: "启用定时任务。ref 可为 id/name/path。",
+  inputSchema: {
+    type: "object",
+    properties: { ref: { type: "string" } },
+    required: ["ref"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const id = await setTaskEnabled(client, args.ref, true);
+    return { id, enabled: true };
+  },
+};
+
+export const disableTaskTool: ToolDef<{ ref: string }, { id: string; enabled: boolean }> = {
+  name: "disable_task",
+  description: "关闭定时任务。ref 可为 id/name/path。",
+  inputSchema: {
+    type: "object",
+    properties: { ref: { type: "string" } },
+    required: ["ref"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const id = await setTaskEnabled(client, args.ref, false);
+    return { id, enabled: false };
+  },
+};
