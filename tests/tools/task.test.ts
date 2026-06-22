@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../setup";
 import { MagicClient } from "../../src/client/magic-client.js";
 import type { Config } from "../../src/config.js";
-import { listTasksTool, getTaskTool, createTaskTool } from "../../src/tools/task.js";
+import { listTasksTool, getTaskTool, createTaskTool, updateTaskTool } from "../../src/tools/task.js";
 
 const cfg: Config = { baseUrl: "http://ma", webPath: "/magic/web", readonly: false, prefix: "" };
 const client = () => new MagicClient(cfg);
@@ -105,5 +105,23 @@ describe("create_task", () => {
     });
     expect(res).toEqual({ id: "t3" });
     expect(folderSaved).toMatchObject({ name: "新分组", path: "新分组", type: "task", parentId: "0" });
+  });
+});
+
+describe("update_task", () => {
+  it("merges patch onto old value and saves with auto flag", async () => {
+    let saved: any;
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.get("http://ma/magic/web/resource/file/t1", () =>
+        HttpResponse.json({ code: 1, message: "ok", data: { id: "t1", name: "每日清理", path: "/daily", groupId: "tg1", script: "return 1", cron: "0 0 * * * ?", enabled: true, description: "每日" } })),
+      http.post("http://ma/magic/web/resource/file/task/save", async ({ request }) => {
+        saved = await request.json();
+        return HttpResponse.json({ code: 1, message: "ok", data: "t1" });
+      })
+    );
+    const res = await updateTaskTool.handler(client(), { ref: "t1", cron: "0 30 * * * ?", script: "return 9" });
+    expect(res).toEqual({ id: "t1" });
+    expect(saved).toMatchObject({ id: "t1", cron: "0 30 * * * ?", script: "return 9", enabled: true, name: "每日清理" });
   });
 });

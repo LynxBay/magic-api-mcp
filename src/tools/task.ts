@@ -129,3 +129,45 @@ export const createTaskTool: ToolDef<CreateTaskArgs, { id: string }> = {
     return { id };
   },
 };
+
+/** 取旧值 → 仅覆盖 patch 中非 undefined 字段 → 保存（auto=1 表示更新） */
+async function applyPatch(client: MagicClient, id: string, patch: Partial<TaskInfo>): Promise<void> {
+  const old = await client.managementGet<TaskInfo>(`resource/file/${id}`);
+  const next: TaskInfo = { ...old };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) (next as any)[k] = v;
+  }
+  await client.managementPost<string>("resource/file/task/save", next, { auto: "1" });
+}
+
+export interface UpdateTaskArgs {
+  ref: string;
+  cron?: string;
+  script?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export const updateTaskTool: ToolDef<UpdateTaskArgs, { id: string }> = {
+  name: "update_task",
+  description: "更新定时任务，未传字段保留原值。ref 可为 id/name/path。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ref: { type: "string" },
+      cron: { type: "string" },
+      script: { type: "string" },
+      description: { type: "string" },
+      enabled: { type: "boolean" },
+    },
+    required: ["ref"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const id = await resolveTaskRef(client, args.ref);
+    await applyPatch(client, id, {
+      cron: args.cron, script: args.script, description: args.description, enabled: args.enabled,
+    });
+    return { id };
+  },
+};
