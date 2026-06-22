@@ -9,6 +9,8 @@ describe("registry", () => {
         "create_api", "create_group", "delete_api", "get_api", "get_function",
         "list_apis", "list_datasources", "list_functions", "list_groups",
         "magic_script_help", "run_api", "search_code", "update_api_script",
+        "create_task", "delete_task", "disable_task", "enable_task",
+        "get_task", "list_tasks", "run_task", "update_task",
       ].sort()
     );
   });

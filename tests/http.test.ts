@@ -78,11 +78,11 @@ describe("http transport (no auth)", () => {
   });
   afterEach(() => mswServer.resetHandlers());
 
-  it("responds to tools/list with all 13 tools", async () => {
+  it("responds to tools/list with all 21 tools", async () => {
     const res = await rpc(port, "tools/list", 1);
     expect(res.status).toBe(200);
     const msg = await parseRpc(res);
-    expect(msg.result.tools).toHaveLength(13);
+    expect(msg.result.tools).toHaveLength(21);
     expect(msg.result.tools.map((t: any) => t.name)).toContain("create_api");
   });
 
