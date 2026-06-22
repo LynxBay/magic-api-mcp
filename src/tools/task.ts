@@ -208,3 +208,19 @@ export const disableTaskTool: ToolDef<{ ref: string }, { id: string; enabled: bo
     return { id, enabled: false };
   },
 };
+
+export const deleteTaskTool: ToolDef<{ ref: string }, { deleted: boolean }> = {
+  name: "delete_task",
+  description: "删除定时任务。ref 可为 id/name/path。",
+  inputSchema: {
+    type: "object",
+    properties: { ref: { type: "string" } },
+    required: ["ref"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const id = await resolveTaskRef(client, args.ref);
+    const ok = await client.managementPost<boolean>("resource/delete", undefined, { id });
+    return { deleted: !!ok };
+  },
+};
