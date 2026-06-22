@@ -4,6 +4,10 @@ import type { MagicClient } from "../client/magic-client.js";
 import type { ToolDef } from "./group.js";
 import { createGroupTool, listGroupsTool } from "./group.js";
 import { createApiTool, deleteApiTool, getApiTool, listApisTool, runApiTool, updateApiScriptTool } from "./api.js";
+import {
+  createTaskTool, deleteTaskTool, disableTaskTool, enableTaskTool,
+  getTaskTool, listTasksTool, runTaskTool, updateTaskTool,
+} from "./task.js";
 import { getFunctionTool, listFunctionsTool } from "./functions.js";
 import { listDatasourcesTool } from "./datasource.js";
 import { magicScriptHelpTool, searchCodeTool } from "./knowledge.js";
@@ -11,6 +15,8 @@ import { magicScriptHelpTool, searchCodeTool } from "./knowledge.js";
 export const allTools: ToolDef<any, any>[] = [
   listGroupsTool, createGroupTool,
   listApisTool, getApiTool, createApiTool, updateApiScriptTool, deleteApiTool, runApiTool,
+  listTasksTool, getTaskTool, createTaskTool, updateTaskTool,
+  enableTaskTool, disableTaskTool, deleteTaskTool, runTaskTool,
   listFunctionsTool, getFunctionTool, listDatasourcesTool,
   magicScriptHelpTool, searchCodeTool,
 ];

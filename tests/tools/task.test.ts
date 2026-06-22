@@ -7,6 +7,7 @@ import {
   listTasksTool, getTaskTool, createTaskTool, updateTaskTool,
   enableTaskTool, disableTaskTool, deleteTaskTool, runTaskTool,
 } from "../../src/tools/task.js";
+import { allTools, isWriteTool } from "../../src/tools/registry.js";
 
 const cfg: Config = { baseUrl: "http://ma", webPath: "/magic/web", readonly: false, prefix: "" };
 const client = () => new MagicClient(cfg);
@@ -194,5 +195,28 @@ describe("run_task", () => {
     const res = await runTaskTool.handler(client(), { ref: "t1" });
     expect(got).toBe("t1");
     expect(res).toEqual({ ok: 1 });
+  });
+});
+
+describe("registry", () => {
+  it("registers all 8 task tools", () => {
+    const names = allTools.map((t) => t.name);
+    for (const n of [
+      "list_tasks", "get_task", "create_task", "update_task",
+      "enable_task", "disable_task", "delete_task", "run_task",
+    ]) {
+      expect(names).toContain(n);
+    }
+  });
+
+  it("marks task write tools as non-readonly, read tools as readonly", () => {
+    expect(isWriteTool("run_task")).toBe(true);
+    expect(isWriteTool("enable_task")).toBe(true);
+    expect(isWriteTool("disable_task")).toBe(true);
+    expect(isWriteTool("create_task")).toBe(true);
+    expect(isWriteTool("update_task")).toBe(true);
+    expect(isWriteTool("delete_task")).toBe(true);
+    expect(isWriteTool("list_tasks")).toBe(false);
+    expect(isWriteTool("get_task")).toBe(false);
   });
 });
