@@ -46,3 +46,14 @@ export interface RunResult {
   headers: Record<string, string>;
   body: string;
 }
+
+export interface TaskInfo {
+  id: string | null;
+  name: string;
+  path: string;
+  groupId: string;
+  script: string;
+  cron: string;
+  enabled: boolean;
+  description?: string;
+}

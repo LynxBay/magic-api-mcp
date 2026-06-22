@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../setup";
+import { MagicClient } from "../../src/client/magic-client.js";
+import type { Config } from "../../src/config.js";
+import { listTasksTool, getTaskTool } from "../../src/tools/task.js";
+
+const cfg: Config = { baseUrl: "http://ma", webPath: "/magic/web", readonly: false, prefix: "" };
+const client = () => new MagicClient(cfg);
+
+const TREE = {
+  code: 1, message: "ok",
+  data: {
+    task: {
+      node: { id: "0", name: "root", path: "", type: "task", parentId: "" },
+      children: [
+        {
+          node: { id: "tg1", name: "清理", path: "clean", type: "task", parentId: "0" },
+          children: [
+            {
+              node: {
+                id: "t1", name: "每日清理", path: "/daily", script: "return 1",
+                cron: "0 0 * * * ?", enabled: true, groupId: "tg1", description: "每日",
+              },
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+describe("list_tasks", () => {
+  it("lists tasks with cron/enabled/group", async () => {
+    server.use(http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)));
+    const res = await listTasksTool.handler(client(), {});
+    expect(res).toEqual([
+      { id: "t1", name: "每日清理", path: "/daily", cron: "0 0 * * * ?", enabled: true, group: "清理" },
+    ]);
+  });
+
+  it("filters by group name", async () => {
+    server.use(http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)));
+    const res = await listTasksTool.handler(client(), { group: "不存在" });
+    expect(res).toEqual([]);
+  });
+});
+
+describe("get_task", () => {
+  it("returns detail by id", async () => {
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.get("http://ma/magic/web/resource/file/t1", () =>
+        HttpResponse.json({ code: 1, message: "ok", data: { id: "t1", name: "每日清理", script: "return 1", cron: "0 0 * * * ?", enabled: true } }))
+    );
+    const res = await getTaskTool.handler(client(), { ref: "t1" });
+    expect(res).toMatchObject({ id: "t1", cron: "0 0 * * * ?", enabled: true });
+  });
+
+  it("resolves ref by name", async () => {
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.get("http://ma/magic/web/resource/file/t1", () =>
+        HttpResponse.json({ code: 1, message: "ok", data: { id: "t1", name: "每日清理" } }))
+    );
+    const res = await getTaskTool.handler(client(), { ref: "每日清理" });
+    expect(res).toMatchObject({ id: "t1" });
+  });
+});
