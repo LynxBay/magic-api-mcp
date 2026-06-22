@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../setup";
 import { MagicClient } from "../../src/client/magic-client.js";
 import type { Config } from "../../src/config.js";
-import { listTasksTool, getTaskTool } from "../../src/tools/task.js";
+import { listTasksTool, getTaskTool, createTaskTool } from "../../src/tools/task.js";
 
 const cfg: Config = { baseUrl: "http://ma", webPath: "/magic/web", readonly: false, prefix: "" };
 const client = () => new MagicClient(cfg);
@@ -66,5 +66,44 @@ describe("get_task", () => {
     );
     const res = await getTaskTool.handler(client(), { ref: "每日清理" });
     expect(res).toMatchObject({ id: "t1" });
+  });
+});
+
+describe("create_task", () => {
+  it("saves with enabled defaulting to false and path derived from name", async () => {
+    let saved: any;
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.post("http://ma/magic/web/resource/file/task/save", async ({ request }) => {
+        saved = await request.json();
+        return HttpResponse.json({ code: 1, message: "ok", data: "t2" });
+      })
+    );
+    const res = await createTaskTool.handler(client(), {
+      name: "每小时同步", group: "清理", cron: "0 0 * * * ?", script: "return 2",
+    });
+    expect(res).toEqual({ id: "t2" });
+    expect(saved).toMatchObject({
+      name: "每小时同步", groupId: "tg1", cron: "0 0 * * * ?",
+      script: "return 2", enabled: false, path: "/每小时同步",
+    });
+  });
+
+  it("creates folder when group does not exist", async () => {
+    let folderSaved: any;
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.post("http://ma/magic/web/resource/folder/save", async ({ request }) => {
+        folderSaved = await request.json();
+        return HttpResponse.json({ code: 1, message: "ok", data: "tg-new" });
+      }),
+      http.post("http://ma/magic/web/resource/file/task/save", () =>
+        HttpResponse.json({ code: 1, message: "ok", data: "t3" }))
+    );
+    const res = await createTaskTool.handler(client(), {
+      name: "x", group: "新分组", cron: "0 0 * * * ?", script: "return 3", enabled: true, path: "/x",
+    });
+    expect(res).toEqual({ id: "t3" });
+    expect(folderSaved).toMatchObject({ name: "新分组", path: "新分组", type: "task", parentId: "0" });
   });
 });

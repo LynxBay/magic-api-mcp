@@ -79,3 +79,53 @@ export const getTaskTool: ToolDef<{ ref: string }, TaskInfo> = {
     return client.managementGet<TaskInfo>(`resource/file/${id}`);
   },
 };
+
+export interface CreateTaskArgs {
+  name: string;
+  group: string;
+  cron: string;
+  script: string;
+  path?: string;
+  enabled?: boolean;
+  description?: string;
+}
+
+export const createTaskTool: ToolDef<CreateTaskArgs, { id: string }> = {
+  name: "create_task",
+  description: "创建定时任务。自动建立缺失分组。enabled 默认 false（需显式启用）。返回 id。",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      group: { type: "string", description: "分组名（不存在则自动创建）" },
+      cron: { type: "string", description: "cron 表达式" },
+      script: { type: "string", description: "magic-script 脚本" },
+      path: { type: "string", description: "任务标识路径，默认 /${name}" },
+      enabled: { type: "boolean", description: "是否启用，默认 false" },
+      description: { type: "string" },
+    },
+    required: ["name", "group", "cron", "script"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const tree = await fetchTree(client);
+    let groupId = resolveGroupId(tree, args.group, FOLDER);
+    if (!groupId) {
+      groupId = await client.managementPost<string>("resource/folder/save", {
+        name: args.group, path: args.group, type: FOLDER, parentId: "0",
+      });
+    }
+    const body: TaskInfo = {
+      id: null,
+      name: args.name,
+      path: args.path ?? `/${args.name}`,
+      groupId,
+      script: args.script,
+      cron: args.cron,
+      enabled: args.enabled ?? false,
+      description: args.description,
+    };
+    const id = await client.managementPost<string>("resource/file/task/save", body);
+    return { id };
+  },
+};
