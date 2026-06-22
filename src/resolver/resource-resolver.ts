@@ -124,3 +124,43 @@ export function collectGroups(tree: ResourceTree, type: string): Group[] {
   walk(root);
   return out;
 }
+
+/** 通用：收集某 folder 下所有文件节点（有 script、有 path，与无 method 的分组区分） */
+export function collectFilesByFolder(tree: ResourceTree, folder: string): any[] {
+  const root = tree[folder];
+  const out: any[] = [];
+  const walk = (node: TreeNode): void => {
+    for (const child of node.children ?? []) {
+      const n = child.node as any;
+      if (n.id && n.name && n.script !== undefined && n.path) out.push(n);
+      walk(child);
+    }
+  };
+  if (root) walk(root);
+  return out;
+}
+
+/** 通用：某 folder 下 groupId → 分组名（分组节点无 method） */
+export function collectGroupNamesByFolder(tree: ResourceTree, folder: string): Map<string, string> {
+  const m = new Map<string, string>();
+  const root = tree[folder];
+  const walk = (node: TreeNode): void => {
+    for (const child of node.children ?? []) {
+      if ((child.node as any).method === undefined) m.set(child.node.id, child.node.name);
+      walk(child);
+    }
+  };
+  if (root) walk(root);
+  return m;
+}
+
+/** 通用：在某 folder 内把 ref(name/id/path) 解析为 id */
+export async function resolveFileRef(client: MagicClient, ref: string, folder: string): Promise<string> {
+  const tree = await fetchTree(client);
+  const files = collectFilesByFolder(tree, folder);
+  const byNameOrId = files.find((f: any) => f.name === ref || f.id === ref);
+  if (byNameOrId) return byNameOrId.id;
+  const byPath = files.find((f: any) => f.path === ref);
+  if (byPath) return byPath.id;
+  throw new Error(`未找到${folder}资源：${ref}`);
+}

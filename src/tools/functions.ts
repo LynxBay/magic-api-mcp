@@ -1,44 +1,9 @@
-import type { MagicClient } from "../client/magic-client.js";
 import type { ApiInfo } from "../client/types.js";
-import { fetchTree } from "../resolver/resource-resolver.js";
+import {
+  collectFilesByFolder, collectGroupNamesByFolder, fetchTree, resolveFileRef,
+} from "../resolver/resource-resolver.js";
+import { getFile } from "../resolver/resource-repo.js";
 import type { ToolDef } from "./group.js";
-
-interface NamedFile extends ApiInfo {}
-
-function collectNamedFiles(tree: any, folder: string): NamedFile[] {
-  const root = tree[folder];
-  const out: NamedFile[] = [];
-  const walk = (node: any): void => {
-    for (const c of node.children ?? []) {
-      const n = c.node;
-      if (n.id && n.name && n.script !== undefined && n.path) out.push(n);
-      walk(c);
-    }
-  };
-  if (root) walk(root);
-  return out;
-}
-
-function collectGroupNames(tree: any, folder: string): Map<string, string> {
-  const m = new Map<string, string>();
-  const root = tree[folder];
-  const walk = (node: any): void => {
-    for (const c of node.children ?? []) {
-      if (c.node.method === undefined) m.set(c.node.id, c.node.name);
-      walk(c);
-    }
-  };
-  if (root) walk(root);
-  return m;
-}
-
-async function resolveRef(client: MagicClient, ref: string, folder: string): Promise<string> {
-  const tree = await fetchTree(client);
-  const files = collectNamedFiles(tree, folder);
-  const byName = files.find((f) => f.name === ref || f.id === ref);
-  if (byName) return byName.id!;
-  throw new Error(`未找到${folder}资源：${ref}`);
-}
 
 export const listFunctionsTool: ToolDef<void, any[]> = {
   name: "list_functions",
@@ -47,8 +12,8 @@ export const listFunctionsTool: ToolDef<void, any[]> = {
   readonly: true,
   handler: async (client) => {
     const tree = await fetchTree(client);
-    const groups = collectGroupNames(tree, "function");
-    return collectNamedFiles(tree, "function").map((f) => ({
+    const groups = collectGroupNamesByFolder(tree, "function");
+    return collectFilesByFolder(tree, "function").map((f: any) => ({
       id: f.id, name: f.name, path: f.path, group: groups.get(f.groupId) ?? "",
     }));
   },
@@ -60,7 +25,7 @@ export const getFunctionTool: ToolDef<{ ref: string }, ApiInfo> = {
   inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
   readonly: true,
   handler: async (client, args) => {
-    const id = await resolveRef(client, args.ref, "function");
-    return client.managementGet<ApiInfo>(`resource/file/${id}`);
+    const id = await resolveFileRef(client, args.ref, "function");
+    return getFile<ApiInfo>(client, id);
   },
 };

@@ -1,48 +1,28 @@
 import type { MagicClient } from "../client/magic-client.js";
 import type { TaskInfo } from "../client/types.js";
-import { fetchTree, resolveGroupId } from "../resolver/resource-resolver.js";
+import {
+  collectFilesByFolder, collectGroupNamesByFolder, fetchTree, resolveFileRef,
+} from "../resolver/resource-resolver.js";
+import { deleteFile, ensureFolder, getFile, saveFile } from "../resolver/resource-repo.js";
 import type { ToolDef } from "./group.js";
 
 const FOLDER = "task";
 
-/** 收集 task 文件节点（有 script、无 method，与分组区分） */
-function collectTaskFiles(tree: any): TaskInfo[] {
-  const root = tree[FOLDER];
-  const out: TaskInfo[] = [];
-  const walk = (node: any): void => {
-    for (const c of node.children ?? []) {
-      const n = c.node;
-      if (n.id && n.name && n.script !== undefined && n.path) out.push(n);
-      walk(c);
-    }
-  };
-  if (root) walk(root);
-  return out;
+/** 取旧值 → 仅覆盖 patch 中非 undefined 字段 → 保存（update=true 走 auto=1） */
+async function applyPatch(client: MagicClient, id: string, patch: Partial<TaskInfo>): Promise<void> {
+  const old = await getFile<TaskInfo>(client, id);
+  const next: TaskInfo = { ...old };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) (next as any)[k] = v;
+  }
+  await saveFile(client, FOLDER, next, true);
 }
 
-/** task 分组 groupId → 分组名 */
-function collectTaskGroupNames(tree: any): Map<string, string> {
-  const m = new Map<string, string>();
-  const root = tree[FOLDER];
-  const walk = (node: any): void => {
-    for (const c of node.children ?? []) {
-      if (c.node.method === undefined) m.set(c.node.id, c.node.name);
-      walk(c);
-    }
-  };
-  if (root) walk(root);
-  return m;
-}
-
-/** ref(id/name/path) → id */
-async function resolveTaskRef(client: MagicClient, ref: string): Promise<string> {
-  const tree = await fetchTree(client);
-  const files = collectTaskFiles(tree);
-  const byNameOrId = files.find((f) => f.name === ref || f.id === ref);
-  if (byNameOrId) return byNameOrId.id!;
-  const byPath = files.find((f) => f.path === ref);
-  if (byPath) return byPath.id!;
-  throw new Error(`未找到定时任务：${ref}`);
+/** ref → 改 enabled → 保存，返回 id（enable/disable 共用） */
+async function setTaskEnabled(client: MagicClient, ref: string, enabled: boolean): Promise<string> {
+  const id = await resolveFileRef(client, ref, FOLDER);
+  await applyPatch(client, id, { enabled });
+  return id;
 }
 
 export const listTasksTool: ToolDef<{ group?: string }, any[]> = {
@@ -55,10 +35,10 @@ export const listTasksTool: ToolDef<{ group?: string }, any[]> = {
   readonly: true,
   handler: async (client, args) => {
     const tree = await fetchTree(client);
-    const groups = collectTaskGroupNames(tree);
-    return collectTaskFiles(tree)
-      .filter((f) => !args.group || groups.get(f.groupId) === args.group)
-      .map((f) => ({
+    const groups = collectGroupNamesByFolder(tree, FOLDER);
+    return collectFilesByFolder(tree, FOLDER)
+      .filter((f: any) => !args.group || groups.get(f.groupId) === args.group)
+      .map((f: any) => ({
         id: f.id, name: f.name, path: f.path, cron: f.cron, enabled: f.enabled,
         group: groups.get(f.groupId) ?? "",
       }));
@@ -75,8 +55,8 @@ export const getTaskTool: ToolDef<{ ref: string }, TaskInfo> = {
   },
   readonly: true,
   handler: async (client, args) => {
-    const id = await resolveTaskRef(client, args.ref);
-    return client.managementGet<TaskInfo>(`resource/file/${id}`);
+    const id = await resolveFileRef(client, args.ref, FOLDER);
+    return getFile<TaskInfo>(client, id);
   },
 };
 
@@ -108,13 +88,7 @@ export const createTaskTool: ToolDef<CreateTaskArgs, { id: string }> = {
   },
   readonly: false,
   handler: async (client, args) => {
-    const tree = await fetchTree(client);
-    let groupId = resolveGroupId(tree, args.group, FOLDER);
-    if (!groupId) {
-      groupId = await client.managementPost<string>("resource/folder/save", {
-        name: args.group, path: args.group, type: FOLDER, parentId: "0",
-      });
-    }
+    const groupId = await ensureFolder(client, args.group, FOLDER);
     const body: TaskInfo = {
       id: null,
       name: args.name,
@@ -125,20 +99,10 @@ export const createTaskTool: ToolDef<CreateTaskArgs, { id: string }> = {
       enabled: args.enabled ?? false,
       description: args.description,
     };
-    const id = await client.managementPost<string>("resource/file/task/save", body);
+    const id = await saveFile(client, FOLDER, body);
     return { id };
   },
 };
-
-/** 取旧值 → 仅覆盖 patch 中非 undefined 字段 → 保存（auto=1 表示更新） */
-async function applyPatch(client: MagicClient, id: string, patch: Partial<TaskInfo>): Promise<void> {
-  const old = await client.managementGet<TaskInfo>(`resource/file/${id}`);
-  const next: TaskInfo = { ...old };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) (next as any)[k] = v;
-  }
-  await client.managementPost<string>("resource/file/task/save", next, { auto: "1" });
-}
 
 export interface UpdateTaskArgs {
   ref: string;
@@ -164,20 +128,13 @@ export const updateTaskTool: ToolDef<UpdateTaskArgs, { id: string }> = {
   },
   readonly: false,
   handler: async (client, args) => {
-    const id = await resolveTaskRef(client, args.ref);
+    const id = await resolveFileRef(client, args.ref, FOLDER);
     await applyPatch(client, id, {
       cron: args.cron, script: args.script, description: args.description, enabled: args.enabled,
     });
     return { id };
   },
 };
-
-/** ref → 改 enabled → 保存，返回 id（enable/disable 共用） */
-async function setTaskEnabled(client: MagicClient, ref: string, enabled: boolean): Promise<string> {
-  const id = await resolveTaskRef(client, ref);
-  await applyPatch(client, id, { enabled });
-  return id;
-}
 
 export const enableTaskTool: ToolDef<{ ref: string }, { id: string; enabled: boolean }> = {
   name: "enable_task",
@@ -219,9 +176,8 @@ export const deleteTaskTool: ToolDef<{ ref: string }, { deleted: boolean }> = {
   },
   readonly: false,
   handler: async (client, args) => {
-    const id = await resolveTaskRef(client, args.ref);
-    const ok = await client.managementPost<boolean>("resource/delete", undefined, { id });
-    return { deleted: !!ok };
+    const id = await resolveFileRef(client, args.ref, FOLDER);
+    return { deleted: await deleteFile(client, id) };
   },
 };
 
@@ -235,7 +191,7 @@ export const runTaskTool: ToolDef<{ ref: string }, unknown> = {
   },
   readonly: false,
   handler: async (client, args) => {
-    const id = await resolveTaskRef(client, args.ref);
+    const id = await resolveFileRef(client, args.ref, FOLDER);
     return client.managementPost<unknown>("task/execute", undefined, { id });
   },
 };
