@@ -224,3 +224,18 @@ export const deleteTaskTool: ToolDef<{ ref: string }, { deleted: boolean }> = {
     return { deleted: !!ok };
   },
 };
+
+export const runTaskTool: ToolDef<{ ref: string }, unknown> = {
+  name: "run_task",
+  description: "手动执行一次定时任务。ref 可为 id/name/path。返回脚本执行结果。",
+  inputSchema: {
+    type: "object",
+    properties: { ref: { type: "string" } },
+    required: ["ref"],
+  },
+  readonly: false,
+  handler: async (client, args) => {
+    const id = await resolveTaskRef(client, args.ref);
+    return client.managementPost<unknown>("task/execute", undefined, { id });
+  },
+};

@@ -5,7 +5,7 @@ import { MagicClient } from "../../src/client/magic-client.js";
 import type { Config } from "../../src/config.js";
 import {
   listTasksTool, getTaskTool, createTaskTool, updateTaskTool,
-  enableTaskTool, disableTaskTool, deleteTaskTool,
+  enableTaskTool, disableTaskTool, deleteTaskTool, runTaskTool,
 } from "../../src/tools/task.js";
 
 const cfg: Config = { baseUrl: "http://ma", webPath: "/magic/web", readonly: false, prefix: "" };
@@ -178,5 +178,21 @@ describe("delete_task", () => {
     const res = await deleteTaskTool.handler(client(), { ref: "每日清理" });
     expect(res).toEqual({ deleted: true });
     expect(got).toBe("t1");
+  });
+});
+
+describe("run_task", () => {
+  it("posts task/execute with id in query and passes through result", async () => {
+    let got: any;
+    server.use(
+      http.get("http://ma/magic/web/resource", () => HttpResponse.json(TREE)),
+      http.post("http://ma/magic/web/task/execute", ({ request }) => {
+        got = new URL(request.url).searchParams.get("id");
+        return HttpResponse.json({ code: 1, message: "ok", data: { ok: 1 } });
+      })
+    );
+    const res = await runTaskTool.handler(client(), { ref: "t1" });
+    expect(got).toBe("t1");
+    expect(res).toEqual({ ok: 1 });
   });
 });
