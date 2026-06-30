@@ -31,6 +31,53 @@ npm run build
 
 \* 鉴权二选一（账号密码优先）。
 
+## 多 target（一套服务操作多个 magic-api 实例）
+
+如果同一个 MCP 部署需要操作多个 magic-api 实例（如 prod / dev），无需再部署多套，用 `MAGIC_API_TARGETS` 声明即可。
+
+**原理：** 目标实例由 URL path 选定（`/mcp/<target>`），path 写死在 `claude mcp add` 命令里，**整个 session 不可变，AI 没有任何工具能跨 target**——选择权完全在人手里。
+
+**服务端（多 target 启动）**：
+```bash
+MAGIC_API_TARGETS=prod,dev \
+MAGIC_API_TARGET_PROD_BASE=http://prod-host:9999 \
+MAGIC_API_TARGET_PROD_TOKEN=静态令牌 \
+MAGIC_API_TARGET_PROD_READONLY=true \
+MAGIC_API_TARGET_DEV_BASE=http://dev-host:9999 \
+MAGIC_API_TARGET_DEV_USERNAME=admin \
+MAGIC_API_TARGET_DEV_PASSWORD=密码 \
+MAGIC_API_TRANSPORT=http \
+MAGIC_API_ACCESS_TOKEN=团队令牌 \
+node dist/index.js
+```
+
+**每 target 的字段**（前缀为 `MAGIC_API_TARGET_<NAME>_`，NAME 转为大写）：
+
+| 变量 | 必填 | 默认 | 说明 |
+|---|---|---|---|
+| `_BASE` | target 必填 | — | magic-api 地址 |
+| `_WEB` | 否 | `/magic/web` | 管理端路径 |
+| `_TOKEN` | 否* | — | 静态 token |
+| `_USERNAME` / `_PASSWORD` | 否* | — | 账号密码（自动 login） |
+| `_READONLY` | 否 | `false` | 只读模式 |
+| `_PREFIX` | 否 | 空 | 接口路径前缀 |
+
+**同事连接（每人按需选 target）**：
+```bash
+# 连生产
+claude mcp add --transport http magic-api-prod http://部署机:3111/mcp/prod \
+  --header "Authorization: Bearer 团队令牌"
+
+# 连开发
+claude mcp add --transport http magic-api-dev http://部署机:3111/mcp/dev \
+  --header "Authorization: Bearer 团队令牌"
+```
+
+- target 名仅允许 `[A-Za-z0-9_-]+`，同一 session 锁定一个 target。
+- 不设 `MAGIC_API_TARGETS` 时仍为单 target（legacy 模式），现有部署零改动。
+- **stdio 不支持多 target**（无 path 路由），设了 `MAGIC_API_TARGETS` 又用 stdio 会启动报错。
+- 全局 `MAGIC_API_ACCESS_TOKEN` 守卫所有 path；per-target 隔离由 URL 完成。
+
 ## 模式一：stdio（本地，个人用）
 
 Claude 直接启动本地进程。
@@ -127,7 +174,7 @@ node scripts/smoke.mjs
 ## 开发
 
 ```bash
-npm test        # 单元 + 集成（40 测试）
+npm test        # 单元 + 集成（73 测试）
 npm run dev     # tsx 直跑（stdio）
 npm run build
 ```

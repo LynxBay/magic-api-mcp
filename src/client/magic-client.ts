@@ -1,5 +1,6 @@
-import type { Config } from "../config.js";
+import type { TargetConfig } from "../config.js";
 import type { JsonBean, RunResult } from "./types.js";
+import { encrypt } from "./rot13.js";
 
 export interface RunOptions {
   method: string;
@@ -11,7 +12,7 @@ export interface RunOptions {
 export class MagicClient {
   private token?: string;
 
-  constructor(private readonly config: Config) {
+  constructor(private readonly config: TargetConfig) {
     this.token = config.token;
   }
 
@@ -54,19 +55,25 @@ export class MagicClient {
     return this.token ? { "Magic-Token": this.token } : {};
   }
 
-  /** 管理端 GET，返回 JsonBean.data */
+  /** 管理端 GET，返回 JsonBean.data。usePostForGet 时改走 POST（兼容旧版 magic-api）。 */
   async managementGet<T = unknown>(path: string, params?: Record<string, unknown>): Promise<T> {
     const url = this.buildManagementUrl(path, params);
-    return this.managementRequest<T>(url, { method: "GET" });
+    const init: RequestInit = this.config.usePostForGet
+      ? { method: "POST", headers: { ...this.authHeaders(), "Content-Type": "application/json" }, body: "{}" }
+      : { method: "GET" };
+    return this.managementRequest<T>(url, init);
   }
 
-  /** 管理端 POST，body 序列化为 JSON 原始流，返回 JsonBean.data */
+  /** 管理端 POST，body 序列化为 JSON 原始流，返回 JsonBean.data。useEncrypt 时仅对 /resource/file/ 加密。 */
   async managementPost<T = unknown>(
     path: string,
     body?: unknown,
     params?: Record<string, unknown>
   ): Promise<T> {
     const url = this.buildManagementUrl(path, params);
+    const raw = body === undefined ? undefined : JSON.stringify(body);
+    const shouldEncrypt = this.config.useEncrypt && path.startsWith("resource/file/");
+    const encrypted = raw && shouldEncrypt ? encrypt(raw) : raw;
     const headers: Record<string, string> = {
       ...this.authHeaders(),
       "Content-Type": "application/json",
@@ -74,7 +81,7 @@ export class MagicClient {
     const init: RequestInit = {
       method: "POST",
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: encrypted,
     };
     return this.managementRequest<T>(url, init);
   }

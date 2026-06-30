@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "./setup";
 import { MagicClient } from "../src/client/magic-client.js";
 import type { Config } from "../src/config.js";
+import { decrypt } from "../src/client/rot13.js";
 
 const cfg = (over: Partial<Config> = {}): Config => ({
   baseUrl: "http://ma",
@@ -99,5 +100,79 @@ describe("MagicClient.runApi", () => {
     expect(r.status).toBe(200);
     expect(r.body).toBe("hi");
     expect(r.headers["x-test"]).toBe("1");
+  });
+});
+
+describe("MagicClient usePostForGet", () => {
+  it("uses POST instead of GET when usePostForGet is true", async () => {
+    let method = "";
+    server.use(
+      http.post("http://ma/magic/web/resource", ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({ code: 1, message: "ok", data: { ok: true } });
+      })
+    );
+    const c = new MagicClient(cfg({ usePostForGet: true }));
+    const result = await c.managementGet("resource");
+    expect(result).toEqual({ ok: true });
+    expect(method).toBe("POST");
+  });
+
+  it("uses GET by default (usePostForGet omitted)", async () => {
+    let method = "";
+    server.use(
+      http.get("http://ma/magic/web/resource", ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({ code: 1, message: "ok", data: { ok: true } });
+      })
+    );
+    const c = new MagicClient(cfg());
+    await c.managementGet("resource");
+    expect(method).toBe("GET");
+  });
+});
+
+describe("MagicClient useEncrypt", () => {
+  it("encrypts managementPost body with useEncrypt", async () => {
+    let body = "";
+    server.use(
+      http.post("http://ma/magic/web/resource/file/api/save", async ({ request }) => {
+        body = await request.text();
+        return HttpResponse.json({ code: 1, message: "ok", data: "id" });
+      })
+    );
+    const c = new MagicClient(cfg({ useEncrypt: true }));
+    const result = await c.managementPost("resource/file/api/save", { name: "test", path: "/api" });
+    expect(result).toBe("id");
+    // body should be ROT13-encrypted, not plain JSON
+    expect(body).not.toBe('{"name":"test","path":"/api"}');
+    // verify round-trip by decrypting
+    expect(decrypt(body)).toBe('{"name":"test","path":"/api"}');
+  });
+
+  it("does NOT encrypt managementPost body without useEncrypt", async () => {
+    let body = "";
+    server.use(
+      http.post("http://ma/magic/web/resource/file/api/save", async ({ request }) => {
+        body = await request.text();
+        return HttpResponse.json({ code: 1, message: "ok", data: "id" });
+      })
+    );
+    const c = new MagicClient(cfg());
+    await c.managementPost("resource/file/api/save", { name: "test" });
+    expect(body).toBe('{"name":"test"}');
+  });
+
+  it("does NOT encrypt on non-file-save paths even with useEncrypt", async () => {
+    let body = "";
+    server.use(
+      http.post("http://ma/magic/web/resource/folder/save", async ({ request }) => {
+        body = await request.text();
+        return HttpResponse.json({ code: 1, message: "ok", data: "id" });
+      })
+    );
+    const c = new MagicClient(cfg({ useEncrypt: true }));
+    await c.managementPost("resource/folder/save", { name: "test" });
+    expect(body).toBe('{"name":"test"}');
   });
 });

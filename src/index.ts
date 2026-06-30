@@ -1,30 +1,41 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config.js";
-import { MagicClient } from "./client/magic-client.js";
+import { loadServerConfig, loadTargets } from "./config.js";
+import { TargetRegistry } from "./target-registry.js";
 import { allTools } from "./tools/registry.js";
 import { createMcpServer, startHttpServer } from "./http-server.js";
 
 async function main(): Promise<void> {
-  const config = loadConfig();
-  const client = new MagicClient(config);
-  await client.init();
+  const server = loadServerConfig();
+  const { mode, single, targets } = loadTargets();
+  const registry = mode === "multi" ? TargetRegistry.forMulti(targets) : TargetRegistry.forSingle(single!);
 
-  if (config.transport === "http") {
-    const httpServer = await startHttpServer(config, client);
+  if (server.transport === "http") {
+    const httpServer = await startHttpServer(server, registry);
     const addr = httpServer.address();
-    const port = typeof addr === "object" && addr ? addr.port : config.httpPort;
+    const port = typeof addr === "object" && addr ? addr.port : server.httpPort;
+    const backend =
+      mode === "multi"
+        ? `${targets.size} targets: ${[...targets.keys()].join(", ")}`
+        : `${single!.baseUrl}${single!.webPath} (readonly=${single!.readonly})`;
     console.error(
-      `magic-api-mcp (http) listening on ${config.httpHost}:${port} → ${config.baseUrl}${config.webPath} (readonly=${config.readonly}, auth=${!!config.accessToken}, tools=${allTools.length})`
+      `magic-api-mcp (http) listening on ${server.httpHost}:${port} → ${backend} (auth=${!!server.accessToken}, tools=${allTools.length})`
     );
     return;
   }
 
-  const server = createMcpServer(client);
+  // stdio 没有 path/header，无法做多 target 路由
+  if (mode === "multi") {
+    throw new Error("multi-target mode requires HTTP transport (stdio has no target routing)");
+  }
+
+  const client = await registry.resolveDefault();
+  if (!client) throw new Error("no backend configured");
+  const mcp = createMcpServer(client);
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await mcp.connect(transport);
   console.error(
-    `magic-api-mcp (stdio) ready → ${config.baseUrl}${config.webPath} (readonly=${config.readonly}, tools=${allTools.length})`
+    `magic-api-mcp (stdio) ready → ${single!.baseUrl}${single!.webPath} (readonly=${single!.readonly}, tools=${allTools.length})`
   );
 }
 
